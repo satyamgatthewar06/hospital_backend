@@ -63,7 +63,7 @@ const connectDB = async (retries = 5, delayMs = 3000) => {
       connection.release();
 
       console.log('🌍 MySQL Connected Successfully');
-      return;
+      return true;
     } catch (error) {
       console.error(`⚠️ MySQL Connection Error (attempt ${attempt}/${retries}):`, error.message);
       if (attempt < retries) {
@@ -71,12 +71,12 @@ const connectDB = async (retries = 5, delayMs = 3000) => {
         await new Promise((res) => setTimeout(res, delayMs));
       } else {
         console.error('❌ All MySQL connection attempts failed.');
-        // In production it's often better to exit so the process manager can restart the service.
-        // Leave process.exit here so Railway or other orchestrators can restart the crashed service.
-        process.exit(1);
+        // Do not exit here — return false so server can still start and serve non-DB routes.
+        return false;
       }
     }
   }
+  return false;
 };
 
 // Export pool for use in routes
@@ -230,12 +230,16 @@ const createTables = async () => {
 // ============ START SERVER ============
 const startServer = async () => {
   try {
-    // Connect to MySQL and create tables
-    await connectDB();
-    await createTables();
-    
+    // Connect to MySQL and create tables (if available)
+    const dbConnected = await connectDB();
+    if (dbConnected) {
+      await createTables();
+    } else {
+      console.warn('⚠️ Starting server without database connection. DB routes will return errors until DB is available.');
+    }
+
     const PORT = process.env.PORT || 5001;
-    app.listen(PORT, () => {
+    const server = app.listen(PORT, () => {
       console.log(`
 ╔════════════════════════════════════════════════════════════╗
 ║        🏥 Hospital Management System Backend                ║
