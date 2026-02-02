@@ -1,5 +1,5 @@
 import express from 'express';
-import Patient from '../models/Patient.js';
+import { Patient } from '../db/models.js';
 import { authMiddleware } from '../middleware/authMiddleware.js';
 
 const router = express.Router();
@@ -7,7 +7,7 @@ const router = express.Router();
 // Get all patients
 router.get('/', authMiddleware, async (req, res) => {
   try {
-    const patients = await Patient.find().populate('userId');
+    const patients = await Patient.findAll();
     res.status(200).json({
       success: true,
       count: patients.length,
@@ -21,7 +21,7 @@ router.get('/', authMiddleware, async (req, res) => {
 // Get patient by ID
 router.get('/:id', authMiddleware, async (req, res) => {
   try {
-    const patient = await Patient.findById(req.params.id).populate('userId');
+    const patient = await Patient.findById(req.params.id);
     if (!patient) {
       return res.status(404).json({
         success: false,
@@ -37,8 +37,7 @@ router.get('/:id', authMiddleware, async (req, res) => {
 // Create patient
 router.post('/', authMiddleware, async (req, res) => {
   try {
-    const patient = new Patient(req.body);
-    await patient.save();
+    const patient = await Patient.create(req.body);
     res.status(201).json({
       success: true,
       message: 'Patient created successfully',
@@ -52,11 +51,7 @@ router.post('/', authMiddleware, async (req, res) => {
 // Update patient
 router.put('/:id', authMiddleware, async (req, res) => {
   try {
-    const patient = await Patient.findByIdAndUpdate(
-      req.params.id,
-      req.body,
-      { new: true, runValidators: true }
-    );
+    const patient = await Patient.update(req.params.id, req.body);
     res.status(200).json({
       success: true,
       message: 'Patient updated successfully',
@@ -70,7 +65,7 @@ router.put('/:id', authMiddleware, async (req, res) => {
 // Delete patient
 router.delete('/:id', authMiddleware, async (req, res) => {
   try {
-    await Patient.findByIdAndDelete(req.params.id);
+    await Patient.delete(req.params.id);
     res.status(200).json({
       success: true,
       message: 'Patient deleted successfully'

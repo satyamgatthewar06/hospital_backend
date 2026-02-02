@@ -1,5 +1,5 @@
 import express from 'express';
-import mongoose from 'mongoose';
+import mysql from 'mysql2/promise';
 import cors from 'cors';
 import helmet from 'helmet';
 import dotenv from 'dotenv';
@@ -31,26 +31,43 @@ dotenv.config();
 const app = express();
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
-// ============ MONGODB CONNECTION ============
+// ============ MYSQL CONNECTION ============
+let dbPool;
+
 const connectDB = async () => {
   try {
-    const mongoURI = process.env.MONGODB_URI || 'mongodb://127.0.0.1:27017/hospital_management';
-    await mongoose.connect(mongoURI, {
-      useNewUrlParser: true,
-      useUnifiedTopology: true,
-      serverSelectionTimeoutMS: 5000,
-      connectTimeoutMS: 10000,
-    });
-    console.log('✅ MongoDB Connected Successfully');
-    console.log(`📊 Database: ${mongoose.connection.db.name}`);
+    // Railway (and other platforms) provide a single connection URL via an env var
+    // e.g. set MYSQL_URL=${{ MySQL.MYSQL_URL }} in Railway. mysql2 accepts a
+    // connection string as well as an options object.
+    if (process.env.MYSQL_URL) {
+      dbPool = mysql.createPool(process.env.MYSQL_URL);
+    } else {
+      dbPool = mysql.createPool({
+        host: process.env.DB_HOST || 'localhost',
+        user: process.env.DB_USER || 'root',
+        password: process.env.DB_PASSWORD || '',
+        database: process.env.DB_NAME || 'hospital_management',
+        port: process.env.DB_PORT || 3306,
+        waitForConnections: true,
+        connectionLimit: 10,
+        queueLimit: 0,
+      });
+    }
+
+    // Test the connection
+    const connection = await dbPool.getConnection();
+    await connection.ping();
+    connection.release();
+    
+    console.log("🌍 MySQL Connected Successfully");
   } catch (error) {
-    console.error('⚠️  MongoDB Connection Error:', error.message);
-    console.log('📌 Running in DEMO MODE (without database)');
-    console.log('💡 To use database: Ensure MongoDB is running on port 27017');
+    console.error("⚠️ MySQL Connection Error:", error.message);
+    process.exit(1);
   }
 };
 
-connectDB();
+// Export pool for use in routes
+export { dbPool };
 
 // ============ SECURITY MIDDLEWARE ============
 app.use(helmet());
@@ -73,7 +90,7 @@ app.get('/api/health', (req, res) => {
     status: 'ok',
     timestamp: new Date().toISOString(),
     uptime: process.uptime(),
-    database: mongoose.connection.readyState === 1 ? 'connected' : 'disconnected'
+    database: dbPool ? 'connected' : 'disconnected'
   });
 });
 
@@ -105,9 +122,105 @@ app.use((req, res) => {
 // ============ ERROR HANDLING MIDDLEWARE ============
 app.use(errorHandler);
 
+// ============ CREATE DATABASE TABLES ============
+const createTables = async () => {
+  try {
+    const connection = await dbPool.getConnection();
+    
+    const tables = [
+      `CREATE TABLE IF NOT EXISTS users (
+        id INT AUTO_INCREMENT PRIMARY KEY,
+        name VARCHAR(255) NOT NULL,
+        email VARCHAR(255) UNIQUE NOT NULL,
+        password VARCHAR(255) NOT NULL,
+        role VARCHAR(50) NOT NULL,
+        phone VARCHAR(20),
+        createdAt TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      )`,
+      `CREATE TABLE IF NOT EXISTS patients (
+        id INT AUTO_INCREMENT PRIMARY KEY,
+        name VARCHAR(255) NOT NULL,
+        email VARCHAR(255),
+        phone VARCHAR(20),
+        dateOfBirth DATE,
+        gender VARCHAR(10),
+        bloodGroup VARCHAR(10),
+        address TEXT,
+        city VARCHAR(100),
+        state VARCHAR(100),
+        zipCode VARCHAR(10),
+        insuranceId INT,
+        createdAt TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      )`,
+      `CREATE TABLE IF NOT EXISTS doctors (
+        id INT AUTO_INCREMENT PRIMARY KEY,
+        name VARCHAR(255) NOT NULL,
+        email VARCHAR(255) UNIQUE NOT NULL,
+        specialization VARCHAR(100),
+        phone VARCHAR(20),
+        qualifications TEXT,
+        yearsExperience INT,
+        createdAt TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      )`,
+      `CREATE TABLE IF NOT EXISTS appointments (
+        id INT AUTO_INCREMENT PRIMARY KEY,
+        patientId INT NOT NULL,
+        doctorId INT NOT NULL,
+        appointmentDate DATETIME NOT NULL,
+        status VARCHAR(50) DEFAULT 'scheduled',
+        reason TEXT,
+        createdAt TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (patientId) REFERENCES patients(id),
+        FOREIGN KEY (doctorId) REFERENCES doctors(id)
+      )`,
+      `CREATE TABLE IF NOT EXISTS billing (
+        id INT AUTO_INCREMENT PRIMARY KEY,
+        patientId INT NOT NULL,
+        amount DECIMAL(10, 2),
+        description TEXT,
+        paymentStatus VARCHAR(50) DEFAULT 'pending',
+        createdAt TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (patientId) REFERENCES patients(id)
+      )`,
+      `CREATE TABLE IF NOT EXISTS wards (
+        id INT AUTO_INCREMENT PRIMARY KEY,
+        name VARCHAR(100) NOT NULL,
+        totalBeds INT,
+        availableBeds INT,
+        type VARCHAR(50),
+        createdAt TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      )`,
+      `CREATE TABLE IF NOT EXISTS laboratory (
+        id INT AUTO_INCREMENT PRIMARY KEY,
+        patientId INT NOT NULL,
+        testName VARCHAR(255),
+        result TEXT,
+        testDate DATE,
+        status VARCHAR(50) DEFAULT 'pending',
+        createdAt TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (patientId) REFERENCES patients(id)
+      )`
+    ];
+
+    for (const table of tables) {
+      await connection.query(table);
+    }
+    
+    connection.release();
+    console.log("✅ Database tables created/verified");
+  } catch (error) {
+    console.warn("⚠️ Table creation warning (may already exist):", error.message);
+    // Don't exit — tables may already exist
+  }
+};
+
 // ============ START SERVER ============
 const startServer = async () => {
   try {
+    // Connect to MySQL and create tables
+    await connectDB();
+    await createTables();
+    
     const PORT = process.env.PORT || 5000;
     app.listen(PORT, () => {
       console.log(`
