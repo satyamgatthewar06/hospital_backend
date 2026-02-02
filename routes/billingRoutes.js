@@ -76,12 +76,3 @@ router.delete('/:id', authMiddleware, async (req, res) => {
 });
 
 export default router;
-      success: true,
-      message: 'Bill deleted successfully'
-    });
-  } catch (error) {
-    res.status(500).json({ success: false, message: error.message });
-  }
-});
-
-export default router;
