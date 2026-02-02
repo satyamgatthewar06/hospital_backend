@@ -34,35 +34,48 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 // ============ MYSQL CONNECTION ============
 let dbPool;
 
-const connectDB = async () => {
-  try {
-    // Railway (and other platforms) provide a single connection URL via an env var
-    // e.g. set MYSQL_URL=${{ MySQL.MYSQL_URL }} in Railway. mysql2 accepts a
-    // connection string as well as an options object.
-    if (process.env.MYSQL_URL) {
-      dbPool = mysql.createPool(process.env.MYSQL_URL);
-    } else {
-      dbPool = mysql.createPool({
-        host: process.env.DB_HOST || 'localhost',
-        user: process.env.DB_USER || 'root',
-        password: process.env.DB_PASSWORD || '',
-        database: process.env.DB_NAME || 'hospital_management',
-        port: process.env.DB_PORT || 3306,
-        waitForConnections: true,
-        connectionLimit: 10,
-        queueLimit: 0,
-      });
-    }
+/**
+ * Connect to MySQL with retries. Railway provides a single connection
+ * URL via `MYSQL_URL`. We retry a few times before failing to avoid
+ * transient deployment/network issues causing immediate crashes.
+ */
+const connectDB = async (retries = 5, delayMs = 3000) => {
+  for (let attempt = 1; attempt <= retries; attempt++) {
+    try {
+      if (process.env.MYSQL_URL) {
+        dbPool = mysql.createPool(process.env.MYSQL_URL);
+      } else {
+        dbPool = mysql.createPool({
+          host: process.env.DB_HOST || 'localhost',
+          user: process.env.DB_USER || 'root',
+          password: process.env.DB_PASSWORD || '',
+          database: process.env.DB_NAME || 'hospital_management',
+          port: process.env.DB_PORT || 3306,
+          waitForConnections: true,
+          connectionLimit: 10,
+          queueLimit: 0,
+        });
+      }
 
-    // Test the connection
-    const connection = await dbPool.getConnection();
-    await connection.ping();
-    connection.release();
-    
-    console.log("🌍 MySQL Connected Successfully");
-  } catch (error) {
-    console.error("⚠️ MySQL Connection Error:", error.message);
-    process.exit(1);
+      // Test the connection
+      const connection = await dbPool.getConnection();
+      await connection.ping();
+      connection.release();
+
+      console.log('🌍 MySQL Connected Successfully');
+      return;
+    } catch (error) {
+      console.error(`⚠️ MySQL Connection Error (attempt ${attempt}/${retries}):`, error.message);
+      if (attempt < retries) {
+        console.log(`Retrying MySQL connection in ${delayMs}ms...`);
+        await new Promise((res) => setTimeout(res, delayMs));
+      } else {
+        console.error('❌ All MySQL connection attempts failed.');
+        // In production it's often better to exit so the process manager can restart the service.
+        // Leave process.exit here so Railway or other orchestrators can restart the crashed service.
+        process.exit(1);
+      }
+    }
   }
 };
 
@@ -221,7 +234,7 @@ const startServer = async () => {
     await connectDB();
     await createTables();
     
-    const PORT = process.env.PORT || 5000;
+    const PORT = process.env.PORT || 5001;
     app.listen(PORT, () => {
       console.log(`
 ╔════════════════════════════════════════════════════════════╗
