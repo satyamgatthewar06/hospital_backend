@@ -98,6 +98,15 @@ app.use(express.urlencoded({ limit: '50mb', extended: true }));
 app.use(logger);
 
 // ============ HEALTH CHECK ============
+app.get('/', (req, res) => {
+  res.status(200).json({
+    success: true,
+    message: '🏥 Hospital Management System Backend is Running',
+    documentation: '/api-docs',
+    timestamp: new Date().toISOString()
+  });
+});
+
 app.get('/api/health', (req, res) => {
   res.status(200).json({
     status: 'ok',
@@ -139,7 +148,7 @@ app.use(errorHandler);
 const createTables = async () => {
   try {
     const connection = await dbPool.getConnection();
-    
+
     const tables = [
       `CREATE TABLE IF NOT EXISTS users (
         id INT AUTO_INCREMENT PRIMARY KEY,
@@ -218,7 +227,7 @@ const createTables = async () => {
     for (const table of tables) {
       await connection.query(table);
     }
-    
+
     connection.release();
     console.log("✅ Database tables created/verified");
   } catch (error) {
