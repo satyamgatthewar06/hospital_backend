@@ -1,0 +1,64 @@
+
+// ============================================
+// 4. REPORT SHARING & LOGGING
+// ============================================
+
+// Share Report (Log Share Event)
+// Body: { reqId, method ('whatsapp'|'email'|'portal'), recipient }
+router.post('/share-log', authMiddleware, async (req, res) => {
+  try {
+    const { reqId, method, recipient } = req.body;
+    
+    // Get current history
+    const [rows] = await dbPool.query('SELECT shareHistory FROM lab_requests WHERE id = ?', [reqId]);
+    if (rows.length === 0) return res.status(404).json({ success: false, message: 'Request not found' });
+    
+    let history = [];
+    try {
+      history = JSON.parse(rows[0].shareHistory || '[]');
+    } catch (e) { history = []; }
+
+    const newEvent = {
+      method,
+      recipient,
+      timestamp: new Date().toISOString(),
+      status: 'Sent' // In a real app, this would be callback based
+    };
+
+    history.push(newEvent);
+
+    await dbPool.query('UPDATE lab_requests SET shareHistory = ? WHERE id = ?', [JSON.stringify(history), reqId]);
+    
+    res.status(200).json({ success: true, data: history });
+  } catch (error) {
+    console.error('Share log error:', error);
+    res.status(500).json({ success: false, message: error.message });
+  }
+});
+
+// Download Log
+router.post('/download-log', authMiddleware, async (req, res) => {
+  try {
+    const { reqId, type } = req.body;
+
+    const [rows] = await dbPool.query('SELECT downloadHistory FROM lab_requests WHERE id = ?', [reqId]);
+    if (rows.length === 0) return res.status(404).json({ success: false, message: 'Request not found' });
+
+    let history = [];
+    try {
+        history = JSON.parse(rows[0].downloadHistory || '[]');
+    } catch (e) { history = []; }
+
+    const newEvent = {
+        type: type || 'pdf',
+        timestamp: new Date().toISOString()
+    };
+    history.push(newEvent);
+
+    await dbPool.query('UPDATE lab_requests SET downloadHistory = ? WHERE id = ?', [JSON.stringify(history), reqId]);
+    res.status(200).json({ success: true, data: history });
+  } catch (error) {
+    console.error('Download log error:', error);
+    res.status(500).json({ success: false, message: error.message });
+  }
+});

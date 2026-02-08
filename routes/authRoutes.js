@@ -1,6 +1,7 @@
 import express from 'express';
 import jwt from 'jsonwebtoken';
-import User from '../models/User.js';
+import bcrypt from 'bcryptjs';
+import { dbPool } from '../server.js';
 import { authMiddleware } from '../middleware/authMiddleware.js';
 
 const router = express.Router();
@@ -19,29 +20,33 @@ router.post('/register', async (req, res) => {
     }
 
     // Check if user exists
-    const existingUser = await User.findOne({ $or: [{ email }, { phone }] });
-    if (existingUser) {
+    const [existingUsers] = await dbPool.query(
+      `SELECT id FROM users WHERE email = ? OR username = ?`,
+      [email, email]
+    );
+
+    if (existingUsers.length > 0) {
       return res.status(409).json({
         success: false,
-        message: 'Email or phone already registered'
+        message: 'Email already registered'
       });
     }
 
-    // Create user
-    const user = new User({
-      firstName,
-      lastName,
-      email,
-      phone,
-      password,
-      role: role || 'PATIENT'
-    });
+    // Hash password
+    const hashedPassword = await bcrypt.hash(password, 10);
 
-    await user.save();
+    // Create user
+    const username = email.split('@')[0]; // Generate username from email
+    const [result] = await dbPool.query(
+      `INSERT INTO users (username, email, password, role, isActive) VALUES (?, ?, ?, ?, ?)`,
+      [username, email, hashedPassword, role || 'patient', true]
+    );
+
+    const userId = result.insertId;
 
     // Generate JWT token
     const token = jwt.sign(
-      { id: user._id, email: user.email, role: user.role },
+      { id: userId, email, role: role || 'patient' },
       process.env.JWT_SECRET || 'your_secret_key',
       { expiresIn: process.env.JWT_EXPIRATION || '7d' }
     );
@@ -50,9 +55,10 @@ router.post('/register', async (req, res) => {
       success: true,
       message: 'User registered successfully',
       token,
-      user: user.toJSON()
+      user: { id: userId, email, role: role || 'patient' }
     });
   } catch (error) {
+    console.error('Register error:', error);
     res.status(500).json({
       success: false,
       message: error.message
@@ -73,22 +79,41 @@ router.post('/login', async (req, res) => {
       });
     }
 
-    // Find user and compare password
-    const user = await User.findOne({ email }).select('+password');
-    if (!user || !(await user.comparePassword(password))) {
+    // Find user
+    const [users] = await dbPool.query(
+      `SELECT id, username, email, password, role, isActive FROM users WHERE email = ?`,
+      [email]
+    );
+
+    if (users.length === 0) {
       return res.status(401).json({
         success: false,
         message: 'Invalid email or password'
       });
     }
 
-    // Update last login
-    user.lastLogin = new Date();
-    await user.save();
+    const user = users[0];
+
+    // Check if user is active
+    if (!user.isActive) {
+      return res.status(403).json({
+        success: false,
+        message: 'Account is inactive. Please contact support.'
+      });
+    }
+
+    // Compare password
+    const isPasswordValid = await bcrypt.compare(password, user.password);
+    if (!isPasswordValid) {
+      return res.status(401).json({
+        success: false,
+        message: 'Invalid email or password'
+      });
+    }
 
     // Generate JWT token
     const token = jwt.sign(
-      { id: user._id, email: user.email, role: user.role },
+      { id: user.id, email: user.email, role: user.role },
       process.env.JWT_SECRET || 'your_secret_key',
       { expiresIn: process.env.JWT_EXPIRATION || '7d' }
     );
@@ -97,9 +122,15 @@ router.post('/login', async (req, res) => {
       success: true,
       message: 'Login successful',
       token,
-      user: user.toJSON()
+      user: {
+        id: user.id,
+        username: user.username,
+        email: user.email,
+        role: user.role
+      }
     });
   } catch (error) {
+    console.error('Login error:', error);
     res.status(500).json({
       success: false,
       message: error.message
@@ -110,10 +141,21 @@ router.post('/login', async (req, res) => {
 // ============ GET CURRENT USER ============
 router.get('/me', authMiddleware, async (req, res) => {
   try {
-    const user = await User.findById(req.user.id);
+    const [users] = await dbPool.query(
+      `SELECT id, username, email, role, isActive, createdAt FROM users WHERE id = ?`,
+      [req.user.id]
+    );
+
+    if (users.length === 0) {
+      return res.status(404).json({
+        success: false,
+        message: 'User not found'
+      });
+    }
+
     res.status(200).json({
       success: true,
-      user
+      user: users[0]
     });
   } catch (error) {
     res.status(500).json({

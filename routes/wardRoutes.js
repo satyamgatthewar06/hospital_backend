@@ -1,5 +1,5 @@
 import express from 'express';
-import Ward from '../models/Ward.js';
+import { dbPool } from '../server.js';
 import { authMiddleware } from '../middleware/authMiddleware.js';
 
 const router = express.Router();
@@ -7,29 +7,14 @@ const router = express.Router();
 // Get all wards
 router.get('/', authMiddleware, async (req, res) => {
   try {
-    const wards = await Ward.find();
+    const [wards] = await dbPool.query('SELECT * FROM wards ORDER BY wardId ASC');
     res.status(200).json({
       success: true,
       count: wards.length,
       data: wards
     });
   } catch (error) {
-    res.status(500).json({ success: false, message: error.message });
-  }
-});
-
-// Get ward by ID
-router.get('/:id', authMiddleware, async (req, res) => {
-  try {
-    const ward = await Ward.findById(req.params.id);
-    if (!ward) {
-      return res.status(404).json({
-        success: false,
-        message: 'Ward not found'
-      });
-    }
-    res.status(200).json({ success: true, data: ward });
-  } catch (error) {
+    console.error('Get wards error:', error);
     res.status(500).json({ success: false, message: error.message });
   }
 });
@@ -37,32 +22,34 @@ router.get('/:id', authMiddleware, async (req, res) => {
 // Create ward
 router.post('/', authMiddleware, async (req, res) => {
   try {
-    const ward = new Ward(req.body);
-    await ward.save();
+    const {
+      wardId, wardName, wardType, totalBeds, availableBeds, floorNumber, facilities, status
+    } = req.body;
+
+    if (!wardId || !wardName || !totalBeds) {
+      return res.status(400).json({
+        success: false,
+        message: 'Missing required fields: wardId, wardName, totalBeds'
+      });
+    }
+
+    const [result] = await dbPool.query(
+      `INSERT INTO wards (wardId, wardName, wardType, totalBeds, availableBeds, floorNumber, facilities, status)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+      [wardId, wardName, wardType, totalBeds, availableBeds || totalBeds, floorNumber, facilities, status || 'active']
+    );
+
+    const [newWard] = await dbPool.query('SELECT * FROM wards WHERE id = ?', [result.insertId]);
     res.status(201).json({
       success: true,
       message: 'Ward created successfully',
-      data: ward
+      data: newWard[0]
     });
   } catch (error) {
-    res.status(400).json({ success: false, message: error.message });
-  }
-});
-
-// Update ward
-router.put('/:id', authMiddleware, async (req, res) => {
-  try {
-    const ward = await Ward.findByIdAndUpdate(
-      req.params.id,
-      req.body,
-      { new: true, runValidators: true }
-    );
-    res.status(200).json({
-      success: true,
-      message: 'Ward updated successfully',
-      data: ward
-    });
-  } catch (error) {
+    console.error('Create ward error:', error);
+    if (error.code === 'ER_DUP_ENTRY') {
+      return res.status(400).json({ success: false, message: 'Ward ID already exists' });
+    }
     res.status(400).json({ success: false, message: error.message });
   }
 });
@@ -70,12 +57,13 @@ router.put('/:id', authMiddleware, async (req, res) => {
 // Delete ward
 router.delete('/:id', authMiddleware, async (req, res) => {
   try {
-    await Ward.findByIdAndDelete(req.params.id);
-    res.status(200).json({
-      success: true,
-      message: 'Ward deleted successfully'
-    });
+    const [result] = await dbPool.query('DELETE FROM wards WHERE id = ?', [req.params.id]);
+    if (result.affectedRows === 0) {
+      return res.status(404).json({ success: false, message: 'Ward not found' });
+    }
+    res.status(200).json({ success: true, message: 'Ward deleted successfully' });
   } catch (error) {
+    console.error('Delete ward error:', error);
     res.status(500).json({ success: false, message: error.message });
   }
 });

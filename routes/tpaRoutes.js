@@ -1,39 +1,20 @@
 import express from 'express';
-import TPA from '../models/TPA.js';
+import { dbPool } from '../server.js';
 import { authMiddleware } from '../middleware/authMiddleware.js';
 
 const router = express.Router();
 
-// Get all TPAs
+// Get all TPA
 router.get('/', authMiddleware, async (req, res) => {
   try {
-    const tpas = await TPA.find()
-      .populate('insurancePolicies')
-      .populate('claims');
+    const [tpa] = await dbPool.query('SELECT * FROM tpa ORDER BY tpaName ASC');
     res.status(200).json({
       success: true,
-      count: tpas.length,
-      data: tpas
+      count: tpa.length,
+      data: tpa
     });
   } catch (error) {
-    res.status(500).json({ success: false, message: error.message });
-  }
-});
-
-// Get TPA by ID
-router.get('/:id', authMiddleware, async (req, res) => {
-  try {
-    const tpa = await TPA.findById(req.params.id)
-      .populate('insurancePolicies')
-      .populate('claims');
-    if (!tpa) {
-      return res.status(404).json({
-        success: false,
-        message: 'TPA not found'
-      });
-    }
-    res.status(200).json({ success: true, data: tpa });
-  } catch (error) {
+    console.error('Get TPA error:', error);
     res.status(500).json({ success: false, message: error.message });
   }
 });
@@ -41,32 +22,34 @@ router.get('/:id', authMiddleware, async (req, res) => {
 // Create TPA
 router.post('/', authMiddleware, async (req, res) => {
   try {
-    const tpa = new TPA(req.body);
-    await tpa.save();
+    const {
+      tpaId, tpaName, contactPerson, email, phone, address, networkHospitals, claimProcessingTime, status
+    } = req.body;
+
+    if (!tpaId || !tpaName) {
+      return res.status(400).json({
+        success: false,
+        message: 'Missing required fields: tpaId, tpaName'
+      });
+    }
+
+    const [result] = await dbPool.query(
+      `INSERT INTO tpa (tpaId, tpaName, contactPerson, email, phone, address, networkHospitals, claimProcessingTime, status)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      [tpaId, tpaName, contactPerson, email, phone, address, networkHospitals, claimProcessingTime, status || 'active']
+    );
+
+    const [newTpa] = await dbPool.query('SELECT * FROM tpa WHERE id = ?', [result.insertId]);
     res.status(201).json({
       success: true,
       message: 'TPA created successfully',
-      data: tpa
+      data: newTpa[0]
     });
   } catch (error) {
-    res.status(400).json({ success: false, message: error.message });
-  }
-});
-
-// Update TPA
-router.put('/:id', authMiddleware, async (req, res) => {
-  try {
-    const tpa = await TPA.findByIdAndUpdate(
-      req.params.id,
-      req.body,
-      { new: true, runValidators: true }
-    );
-    res.status(200).json({
-      success: true,
-      message: 'TPA updated successfully',
-      data: tpa
-    });
-  } catch (error) {
+    console.error('Create TPA error:', error);
+    if (error.code === 'ER_DUP_ENTRY') {
+      return res.status(400).json({ success: false, message: 'TPA ID already exists' });
+    }
     res.status(400).json({ success: false, message: error.message });
   }
 });
@@ -74,12 +57,13 @@ router.put('/:id', authMiddleware, async (req, res) => {
 // Delete TPA
 router.delete('/:id', authMiddleware, async (req, res) => {
   try {
-    await TPA.findByIdAndDelete(req.params.id);
-    res.status(200).json({
-      success: true,
-      message: 'TPA deleted successfully'
-    });
+    const [result] = await dbPool.query('DELETE FROM tpa WHERE id = ?', [req.params.id]);
+    if (result.affectedRows === 0) {
+      return res.status(404).json({ success: false, message: 'TPA not found' });
+    }
+    res.status(200).json({ success: true, message: 'TPA deleted successfully' });
   } catch (error) {
+    console.error('Delete TPA error:', error);
     res.status(500).json({ success: false, message: error.message });
   }
 });

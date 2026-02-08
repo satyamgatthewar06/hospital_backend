@@ -4,32 +4,47 @@ import dotenv from 'dotenv';
 dotenv.config();
 
 const createSchema = async () => {
+  let pool;
   let connection;
   try {
-    // Connect to MySQL server (without specifying database)
-    if (process.env.MYSQL_URL) {
-      connection = await mysql.createConnection(process.env.MYSQL_URL);
-    } else {
-      connection = await mysql.createConnection({
-        host: process.env.DB_HOST || 'localhost',
-        user: process.env.DB_USER || 'root',
-        password: process.env.DB_PASSWORD || '',
-        port: process.env.DB_PORT || 3306,
-      });
+    const config = {
+      host: process.env.DB_HOST || 'localhost',
+      user: process.env.DB_USER || 'root',
+      password: process.env.DB_PASSWORD, // let default to undefined so logic below handles it
+      port: process.env.DB_PORT || 3306,
+      waitForConnections: true,
+      connectionLimit: 10,
+    };
+
+    // Default password to root if not provided in env, for local dev
+    if (config.password === undefined) {
+      config.password = 'root';
     }
+
+    // Checking MYSQL_URL
+    if (process.env.MYSQL_URL && process.env.MYSQL_URL.trim().length > 0) {
+      console.log('Connecting via MYSQL_URL...');
+      pool = mysql.createPool(process.env.MYSQL_URL);
+    } else {
+      console.log('Connecting via config...');
+      pool = mysql.createPool(config);
+    }
+
+    connection = await pool.getConnection();
+    console.log('✅ Connected to MySQL Server');
 
     const dbName = process.env.DB_NAME || 'hospital_management';
 
     // Create database
-    await connection.execute(`CREATE DATABASE IF NOT EXISTS ${dbName}`);
-    console.log(`✅ Database '${dbName}' ready`);
+    await connection.query(`CREATE DATABASE IF NOT EXISTS ${dbName}`);
+    console.log(`✅ Database '${dbName}' verified`);
 
     // Use the database
-    await connection.execute(`USE ${dbName}`);
-    console.log(`✅ Using database '${dbName}'`);
+    await connection.query(`USE ${dbName}`);
 
-    // Create Users table
-    await connection.execute(`
+    // ================== TABLE DEFINITIONS ==================
+    // 1. Users
+    await connection.query(`
       CREATE TABLE IF NOT EXISTS users (
         id INT PRIMARY KEY AUTO_INCREMENT,
         username VARCHAR(255) UNIQUE NOT NULL,
@@ -41,10 +56,10 @@ const createSchema = async () => {
         updatedAt TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
       )
     `);
-    console.log('✅ Users table created');
+    console.log('✅ Users table');
 
-    // Create Patients table
-    await connection.execute(`
+    // 2. Patients
+    await connection.query(`
       CREATE TABLE IF NOT EXISTS patients (
         id INT PRIMARY KEY AUTO_INCREMENT,
         userId INT UNIQUE,
@@ -74,10 +89,10 @@ const createSchema = async () => {
         FOREIGN KEY (userId) REFERENCES users(id) ON DELETE SET NULL
       )
     `);
-    console.log('✅ Patients table created');
+    console.log('✅ Patients table');
 
-    // Create Doctors table
-    await connection.execute(`
+    // 3. Doctors
+    await connection.query(`
       CREATE TABLE IF NOT EXISTS doctors (
         id INT PRIMARY KEY AUTO_INCREMENT,
         userId INT UNIQUE,
@@ -97,10 +112,10 @@ const createSchema = async () => {
         FOREIGN KEY (userId) REFERENCES users(id) ON DELETE SET NULL
       )
     `);
-    console.log('✅ Doctors table created');
+    console.log('✅ Doctors table');
 
-    // Create Appointments table
-    await connection.execute(`
+    // 4. Appointments
+    await connection.query(`
       CREATE TABLE IF NOT EXISTS appointments (
         id INT PRIMARY KEY AUTO_INCREMENT,
         appointmentNumber VARCHAR(50) UNIQUE NOT NULL,
@@ -117,10 +132,10 @@ const createSchema = async () => {
         FOREIGN KEY (doctorId) REFERENCES doctors(id) ON DELETE CASCADE
       )
     `);
-    console.log('✅ Appointments table created');
+    console.log('✅ Appointments table');
 
-    // Create Billing table
-    await connection.execute(`
+    // 5. Billing
+    await connection.query(`
       CREATE TABLE IF NOT EXISTS billing (
         id INT PRIMARY KEY AUTO_INCREMENT,
         billNumber VARCHAR(50) UNIQUE NOT NULL,
@@ -144,10 +159,10 @@ const createSchema = async () => {
         INDEX (status)
       )
     `);
-    console.log('✅ Billing table created');
+    console.log('✅ Billing table');
 
-    // Create Laboratory table
-    await connection.execute(`
+    // 6. Laboratory
+    await connection.query(`
       CREATE TABLE IF NOT EXISTS laboratory (
         id INT PRIMARY KEY AUTO_INCREMENT,
         testId VARCHAR(50) UNIQUE NOT NULL,
@@ -171,10 +186,10 @@ const createSchema = async () => {
         FOREIGN KEY (doctorId) REFERENCES doctors(id) ON DELETE SET NULL
       )
     `);
-    console.log('✅ Laboratory table created');
+    console.log('✅ Laboratory table');
 
-    // Create Staff table
-    await connection.execute(`
+    // 7. Staff
+    await connection.query(`
       CREATE TABLE IF NOT EXISTS staff (
         id INT PRIMARY KEY AUTO_INCREMENT,
         staffId VARCHAR(50) UNIQUE NOT NULL,
@@ -194,10 +209,10 @@ const createSchema = async () => {
         INDEX (department)
       )
     `);
-    console.log('✅ Staff table created');
+    console.log('✅ Staff table');
 
-    // Create Wards table
-    await connection.execute(`
+    // 8. Wards
+    await connection.query(`
       CREATE TABLE IF NOT EXISTS wards (
         id INT PRIMARY KEY AUTO_INCREMENT,
         wardId VARCHAR(50) UNIQUE NOT NULL,
@@ -214,10 +229,10 @@ const createSchema = async () => {
         INDEX (wardId)
       )
     `);
-    console.log('✅ Wards table created');
+    console.log('✅ Wards table');
 
-    // Create IPD (In-Patient Department) table
-    await connection.execute(`
+    // 9. IPD
+    await connection.query(`
       CREATE TABLE IF NOT EXISTS ipd (
         id INT PRIMARY KEY AUTO_INCREMENT,
         admissionNumber VARCHAR(50) UNIQUE NOT NULL,
@@ -240,10 +255,10 @@ const createSchema = async () => {
         FOREIGN KEY (wardId) REFERENCES wards(id) ON DELETE SET NULL
       )
     `);
-    console.log('✅ IPD table created');
+    console.log('✅ IPD table');
 
-    // Create OPD (Out-Patient Department) table
-    await connection.execute(`
+    // 10. OPD
+    await connection.query(`
       CREATE TABLE IF NOT EXISTS opd (
         id INT PRIMARY KEY AUTO_INCREMENT,
         opdTicketNumber VARCHAR(50) UNIQUE NOT NULL,
@@ -263,10 +278,10 @@ const createSchema = async () => {
         FOREIGN KEY (doctorId) REFERENCES doctors(id) ON DELETE SET NULL
       )
     `);
-    console.log('✅ OPD table created');
+    console.log('✅ OPD table');
 
-    // Create Insurance Policy table
-    await connection.execute(`
+    // 11. Insurance Policies
+    await connection.query(`
       CREATE TABLE IF NOT EXISTS insurance_policies (
         id INT PRIMARY KEY AUTO_INCREMENT,
         policyId VARCHAR(50) UNIQUE NOT NULL,
@@ -289,10 +304,10 @@ const createSchema = async () => {
         FOREIGN KEY (patientId) REFERENCES patients(id) ON DELETE CASCADE
       )
     `);
-    console.log('✅ Insurance Policies table created');
+    console.log('✅ Insurance Policies table');
 
-    // Create Insurance Claims table
-    await connection.execute(`
+    // 12. Insurance Claims
+    await connection.query(`
       CREATE TABLE IF NOT EXISTS insurance_claims (
         id INT PRIMARY KEY AUTO_INCREMENT,
         claimNumber VARCHAR(50) UNIQUE NOT NULL,
@@ -312,10 +327,10 @@ const createSchema = async () => {
         FOREIGN KEY (billId) REFERENCES billing(id) ON DELETE CASCADE
       )
     `);
-    console.log('✅ Insurance Claims table created');
+    console.log('✅ Insurance Claims table');
 
-    // Create TPA (Third Party Administrator) table
-    await connection.execute(`
+    // 13. TPA
+    await connection.query(`
       CREATE TABLE IF NOT EXISTS tpa (
         id INT PRIMARY KEY AUTO_INCREMENT,
         tpaId VARCHAR(50) UNIQUE NOT NULL,
@@ -331,28 +346,15 @@ const createSchema = async () => {
         updatedAt TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
       )
     `);
-    console.log('✅ TPA table created');
+    console.log('✅ TPA table');
 
-    console.log('\n✅ All tables created successfully!');
-    console.log(`\n📊 Database Schema Summary:`);
-    console.log(`   - Users`);
-    console.log(`   - Patients`);
-    console.log(`   - Doctors`);
-    console.log(`   - Appointments`);
-    console.log(`   - Billing`);
-    console.log(`   - Laboratory`);
-    console.log(`   - Staff`);
-    console.log(`   - Wards`);
-    console.log(`   - IPD (In-Patient)`);
-    console.log(`   - OPD (Out-Patient)`);
-    console.log(`   - Insurance Policies`);
-    console.log(`   - Insurance Claims`);
-    console.log(`   - TPA`);
-    console.log(`\n✅ Ready to use!`);
+    console.log('\n✅ All tables verified/created!');
 
-    await connection.end();
+    await connection.release();
+    await pool.end();
   } catch (error) {
     console.error('❌ Error creating schema:', error.message);
+    if (pool) await pool.end();
     process.exit(1);
   }
 };
