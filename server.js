@@ -21,6 +21,7 @@ import insuranceClaimRoutes from './routes/insuranceClaimRoutes.js';
 import opdRoutes from './routes/opdRoutes.js';
 import ipdRoutes from './routes/ipdRoutes.js';
 import ipdDetailsRoutes from './routes/ipdDetailsRoutes.js';
+import settingsRoutes from './routes/settingsRoutes.js';
 
 // Import Middleware
 import { errorHandler } from './middleware/errorHandler.js';
@@ -145,6 +146,7 @@ app.use('/api/insurance/claims', insuranceClaimRoutes);
 app.use('/api/opd', opdRoutes);
 app.use('/api/ipd', ipdRoutes);
 app.use('/api/ipd-details', ipdDetailsRoutes);
+app.use('/api/settings', settingsRoutes);
 app.use('/api/insurance-claims', insuranceClaimRoutes);
 app.use('/api/opd', opdRoutes);
 // app.use('/api/ipd', ipdRoutes);
@@ -385,6 +387,15 @@ const createTables = async () => {
         notes TEXT,
         createdAt TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
         FOREIGN KEY (ipdId) REFERENCES ipd_admissions(id) ON DELETE CASCADE
+      )`,
+      `CREATE TABLE IF NOT EXISTS user_settings (
+        id INT AUTO_INCREMENT PRIMARY KEY,
+        userId INT NOT NULL,
+        settingsData JSON NOT NULL,
+        createdAt TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        updatedAt TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+        FOREIGN KEY (userId) REFERENCES users(id) ON DELETE CASCADE,
+        UNIQUE KEY unique_user_settings (userId)
       )`
     ];
 
