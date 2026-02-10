@@ -1,16 +1,42 @@
 import mysql from 'mysql2/promise';
-import dotenv from 'dotenv';
-dotenv.config();
 
-const listUsers = async () => {
-    const connection = await mysql.createConnection(process.env.MYSQL_URL || {
-        host: process.env.DB_HOST || 'localhost',
-        user: process.env.DB_USER || 'root',
-        password: process.env.DB_PASSWORD || '',
-        database: process.env.DB_NAME || 'hospital_management'
-    });
-    const [rows] = await connection.query('SELECT * FROM users'); // or admins?
-    console.log(rows);
-    await connection.end();
+const dbConfig = {
+    host: 'localhost',
+    user: 'root',
+    password: 'root',
+    database: 'hospital_management',
+    port: 3306
 };
-listUsers();
+
+async function checkUsers() {
+    try {
+        const connection = await mysql.createConnection(dbConfig);
+        console.log('Connected to database');
+
+        // Check if users table exists
+        const [tables] = await connection.query("SHOW TABLES LIKE 'users'");
+        console.log('\n=== USERS TABLE EXISTS ===');
+        console.log(tables.length > 0 ? 'Yes' : 'No');
+
+        if (tables.length > 0) {
+            // Get table structure
+            const [columns] = await connection.query('DESCRIBE users');
+            console.log('\n=== USERS TABLE STRUCTURE ===');
+            columns.forEach(col => {
+                console.log(`${col.Field} (${col.Type}) ${col.Null === 'NO' ? 'NOT NULL' : 'NULL'}`);
+            });
+
+            // Get all users
+            const [users] = await connection.query('SELECT * FROM users');
+            console.log('\n=== USERS IN DATABASE ===');
+            console.log(`Total users: ${users.length}`);
+            console.log(JSON.stringify(users, null, 2));
+        }
+
+        await connection.end();
+    } catch (error) {
+        console.error('Error:', error.message);
+    }
+}
+
+checkUsers();
