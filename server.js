@@ -90,12 +90,20 @@ app.use(cors({
     // Allow requests with no origin (like mobile apps or curl requests)
     if (!origin) return callback(null, true);
 
-    // Split FRONTEND_URL by comma and trim whitespace
-    const allowedOrigins = process.env.FRONTEND_URL
-      ? process.env.FRONTEND_URL.split(',').map(url => url.trim())
-      : ['http://localhost:3000'];
+    // Always-allowed origins (production Railway URLs)
+    const productionOrigins = [
+      'https://hospitalfrontend-production.up.railway.app',
+      'https://hospitalbackend-production.up.railway.app'
+    ];
 
-    if (allowedOrigins.indexOf(origin) !== -1) {
+    // Split FRONTEND_URL by comma and trim whitespace
+    const configuredOrigins = process.env.FRONTEND_URL
+      ? process.env.FRONTEND_URL.split(',').map(url => url.trim())
+      : ['http://localhost:3000', 'http://localhost:3001', 'http://localhost:3002'];
+
+    const allowedOrigins = [...new Set([...productionOrigins, ...configuredOrigins])];
+
+    if (allowedOrigins.indexOf(origin) !== -1 || origin.endsWith('.railway.app')) {
       callback(null, true);
     } else {
       callback(new Error('Not allowed by CORS'));
