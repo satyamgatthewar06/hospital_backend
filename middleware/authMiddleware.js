@@ -32,7 +32,9 @@ export const roleMiddleware = (allowedRoles) => {
       });
     }
 
-    if (!allowedRoles.includes(req.user.role)) {
+    const userRole = req.user.role?.toLowerCase();
+    const normalizedAllowed = allowedRoles.map(r => r.toLowerCase());
+    if (!normalizedAllowed.includes(userRole)) {
       return res.status(403).json({
         success: false,
         message: `Access denied. Required roles: ${allowedRoles.join(', ')}`
@@ -43,6 +45,6 @@ export const roleMiddleware = (allowedRoles) => {
   };
 };
 
-export const adminOnly = roleMiddleware(['ADMIN']);
-export const doctorOnly = roleMiddleware(['DOCTOR', 'ADMIN']);
-export const accountantOnly = roleMiddleware(['ACCOUNTANT', 'ADMIN']);
+export const adminOnly = roleMiddleware(['admin']);
+export const doctorOnly = roleMiddleware(['doctor', 'admin']);
+export const accountantOnly = roleMiddleware(['accountant', 'admin']);

@@ -11,7 +11,14 @@ const dbConfig = {
 
 async function createAllRoleUsers() {
     try {
-        const connection = await mysql.createConnection(dbConfig);
+        let connection;
+        if (process.env.MYSQL_URL) {
+            console.log('Connecting via MYSQL_URL...');
+            connection = await mysql.createConnection(process.env.MYSQL_URL);
+        } else {
+            console.log('Connecting via local config...');
+            connection = await mysql.createConnection(dbConfig);
+        }
         console.log('Connected to database');
 
         // Define all roles (excluding pharmacist)

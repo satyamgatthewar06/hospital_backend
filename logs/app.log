@@ -3882,3 +3882,9 @@
 [2026-02-10T10:25:28.901Z] GET /api/opd 304 - ::1
 [2026-02-10T10:25:28.904Z] GET /api/billing 304 - ::1
 [2026-02-10T10:25:28.920Z] GET /api/billing 304 - ::1
+[2026-02-11T07:15:40.171Z] POST /api/auth/login 401 - ::1
+[2026-02-17T07:32:20.122Z] POST /api/auth/login 401 - ::1
+[2026-02-17T07:42:47.706Z] POST /api/auth/login 401 - ::1
+[2026-02-17T07:43:13.952Z] POST /api/auth/login 401 - ::1
+[2026-02-17T07:44:05.166Z] POST /api/auth/login 401 - ::1
+[2026-02-17T07:44:28.073Z] POST /api/auth/login 401 - ::1
