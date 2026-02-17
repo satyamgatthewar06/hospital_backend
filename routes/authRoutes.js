@@ -33,7 +33,16 @@ router.post('/register', async (req, res) => {
     }
 
     // Hash password
-    const hashedPassword = await bcrypt.hash(password, 10);
+     const isBcryptHash = password.startsWith('$2a$') || password.startsWith('$2b$') || password.startsWith('$2y$');
+
+     let hashedPassword;
+     if (isBcryptHash) {
+          // Password is already hashed, use it directly
+          hashedPassword = password;
+        } else {
+          // Hash the plain password
+          hashedPassword = await bcrypt.hash(password, 10);
+        }
 
     // Create user - try username column first (local schema), fall back to name (Railway schema)
     const displayName = email.split('@')[0];
