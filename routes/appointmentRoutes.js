@@ -9,8 +9,8 @@ router.get('/', authMiddleware, async (req, res) => {
   try {
     const [appointments] = await dbPool.query(`
       SELECT a.*, 
-        p.firstName as patientFirstName, p.lastName as patientLastName,
-        d.firstName as doctorFirstName, d.lastName as doctorLastName
+        p.name as patientName,
+        d.name as doctorName
       FROM appointments a
       LEFT JOIN patients p ON a.patientId = p.id
       LEFT JOIN doctors d ON a.doctorId = d.id
@@ -32,8 +32,8 @@ router.get('/:id', authMiddleware, async (req, res) => {
   try {
     const [appointments] = await dbPool.query(`
       SELECT a.*, 
-        p.firstName as patientFirstName, p.lastName as patientLastName,
-        d.firstName as doctorFirstName, d.lastName as doctorLastName
+        p.name as patientName,
+        d.name as doctorName
       FROM appointments a
       LEFT JOIN patients p ON a.patientId = p.id
       LEFT JOIN doctors d ON a.doctorId = d.id
