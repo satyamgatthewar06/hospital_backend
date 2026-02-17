@@ -65,10 +65,16 @@ router.post('/', authMiddleware, async (req, res) => {
       });
     }
 
+    // Normalize status to match DB enum: 'scheduled','completed','cancelled','no-show'
+    const statusMap = { 'confirmed': 'scheduled', 'pending': 'scheduled' };
+    const normalizedStatus = (status || 'scheduled').toLowerCase();
+    const finalStatus = statusMap[normalizedStatus] || normalizedStatus;
+    const finalAppointmentNumber = appointmentNumber || `APT-${Date.now()}`;
+
     const [result] = await dbPool.query(
-      `INSERT INTO appointments (patientId, doctorId, appointmentDate, status, reason)
-       VALUES (?, ?, ?, ?, ?)`,
-      [patientId, doctorId, appointmentDate, status || 'scheduled', reason]
+      `INSERT INTO appointments (appointmentNumber, patientId, doctorId, appointmentDate, appointmentType, status, reason, notes)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+      [finalAppointmentNumber, patientId, doctorId, appointmentDate, appointmentType || 'General', finalStatus, reason, notes]
     );
 
     const [newAppointment] = await dbPool.query('SELECT * FROM appointments WHERE id = ?', [result.insertId]);
