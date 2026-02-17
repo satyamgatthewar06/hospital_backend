@@ -35,12 +35,21 @@ router.post('/register', async (req, res) => {
     // Hash password
     const hashedPassword = await bcrypt.hash(password, 10);
 
-    // Create user
-    const name = email.split('@')[0]; // Generate name from email
-    const [result] = await dbPool.query(
-      `INSERT INTO users (name, email, password, role) VALUES (?, ?, ?, ?)`,
-      [name, email, hashedPassword, role || 'patient']
-    );
+    // Create user - try username column first (local schema), fall back to name (Railway schema)
+    const displayName = email.split('@')[0];
+    let result;
+    try {
+      [result] = await dbPool.query(
+        `INSERT INTO users (username, email, password, role, isActive) VALUES (?, ?, ?, ?, ?)`,
+        [displayName, email, hashedPassword, role || 'patient', true]
+      );
+    } catch (insertError) {
+      // Fall back to 'name' column (Railway schema)
+      [result] = await dbPool.query(
+        `INSERT INTO users (name, email, password, role) VALUES (?, ?, ?, ?)`,
+        [displayName, email, hashedPassword, role || 'patient']
+      );
+    }
 
     const userId = result.insertId;
 
@@ -79,9 +88,9 @@ router.post('/login', async (req, res) => {
       });
     }
 
-    // Find user
+    // Find user - use SELECT * for compatibility with both local (username) and Railway (name) schemas
     const [users] = await dbPool.query(
-      `SELECT id, name, email, password, role FROM users WHERE email = ?`,
+      `SELECT * FROM users WHERE email = ?`,
       [email]
     );
 
@@ -94,7 +103,13 @@ router.post('/login', async (req, res) => {
 
     const user = users[0];
 
-    // User is active (no isActive column in current schema)
+    // Check if user is active (only if isActive column exists in this DB)
+    if (user.isActive !== undefined && !user.isActive) {
+      return res.status(403).json({
+        success: false,
+        message: 'Account is inactive. Please contact support.'
+      });
+    }
 
     // Compare password
     const isPasswordValid = await bcrypt.compare(password, user.password);
@@ -118,7 +133,7 @@ router.post('/login', async (req, res) => {
       token,
       user: {
         id: user.id,
-        username: user.name,
+        username: user.username || user.name || user.email,
         email: user.email,
         role: user.role
       }
@@ -136,7 +151,7 @@ router.post('/login', async (req, res) => {
 router.get('/me', authMiddleware, async (req, res) => {
   try {
     const [users] = await dbPool.query(
-      `SELECT id, name AS username, email, role, createdAt FROM users WHERE id = ?`,
+      `SELECT * FROM users WHERE id = ?`,
       [req.user.id]
     );
 
